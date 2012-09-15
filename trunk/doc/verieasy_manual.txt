@@ -32,7 +32,7 @@ fashion to the the way they are compiled into real Verilog.
 Objective
 ===========
 
-There is a lot in Python to leverage, starting with ast compilation.  We can
+There is a lot in Python to leverage, starting with AST compilation.  We can
 use this to leverage Python's infrastructure to create a Python-flavored
 parallel programming language that integrates with Python and that can
 easily be translated to Verilog (and, of course, VHDL at some point).
@@ -52,7 +52,7 @@ What should such a Python-with-parallelism look like?
     to handle all those needs immediately shouldn't keep us from getting
     started.
 
-Initial semantics by example
+Proposed semantics by example
 ==============================
 
 
@@ -180,4 +180,56 @@ This shows us several features of the proposed new verieasy language:
     of the instantiated module.
   - Not all signals need to be named at all levels of the hierarchy.  (Automatic
     naming will happen on conversion to Verilog.)
+
+Using the hardware definitions
+==============================
+
+As with Verilog, hardware definitions will naturally form a tree structure, and
+use of the verieasy code will start with the object at the top of the hierarchy.
+
+There will be several things you can do with the object at the top.  For example,
+if the top object was the GrayIncReg hardware module, you could possibly do:
+
+    GrayIncReg.dumpVerilog(fname)
+
+or you could include it in a testbench::
+
+    @veri
+    def TestGray(width=10):
+        dut = GrayInc(clock, resetn, enable, width)
+        graycnt = dut.graycnt
+
+        if intial:
+            resetn = 0
+            enable = 0
+            clock = 0
+            for i in range(10):
+                clock = not clock
+            enable = 1
+            for i in range(4096):
+                clock = not clock
+
+        if clock.posedge:
+            print '%3h %3h' % (dut.grayinc_1.inc_1.count, graycnt)
+
+    sim = TestGray.instantiate()
+    sim.run()
+
+Note that, in that example, while there is a notion of events happening, there is
+no real notion of current time.  While it is useful to think of clocks happening
+at a particular time (especially with multiple clocks), it may be useful to think
+of clocks without time, or even of time happening because of clocks.  We should
+somehow support both paradigms.  (But obviously, waveform files will have to
+have some notion of time embedded in them.)
+
+Bootstrapping
+================
+
+The simulator should have the ability to start off with everything set to zeros,
+or with everything set to 'x', which should probably equate to float('nan').  In
+the latter case, special code will need to be compiled (automatically) by verieasy
+around array accesses in order to propagate the nan instead of generating a
+typeerror on indexing.  This would slow down simulation, so should probably not
+be the normal option.
+
 
