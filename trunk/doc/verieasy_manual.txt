@@ -71,7 +71,7 @@ The `MyHDL counter example`__ could look something like this::
     def Inc(clock, resetn, enable, n):
         if not resetn:
             count.next = 0
-        elif clock.posedge:
+        elif clock.posedge and enable:
             count.next = (count + 1) % n
         return count
 
@@ -87,6 +87,17 @@ the function, and that the semantics of a register with an asynchronous
 reset are captured more accurately by this syntax than they are by the
 corresponding Verilog or MyHDL syntax.
 
+Also note that there are no sizes on any of the variables here.  For
+Python, we don't really need sizes.  For Verilog generation, we
+can easily come up with reasonable default sizes for most things, such
+as 1 bit for resetn and enable and clock, and 32 bits (or some other
+user-definable default) for the counter, and/or abort the conversion
+with an error message if explicit sizes are not provided.  This can
+be a user choice.  A user generating code into an FPGA might not
+care if the sizes are too big, because the synthesizer will do the
+right thing.  A user generating an ASIC might want all the explicitness
+he can get.
+
 Finally, note that inputs come into the top of the function, and
 outputs are returned out the bottom.  While this does not match
 how Verilog works, it is intuitive to anybody who has written
@@ -100,8 +111,8 @@ A straightforward translation of the `MyHDL binary to gray counter`__ could look
 
     @veri
     def bin2gray(B, width=8):
-        int[width-1:](B, G)
-        int[width:](Bext)
+        int[width:](B, G)
+        int[width+1:](Bext)
         Bext = B
         for i in range(width):
             G[i] = Bext[i+1] ^ Bext[i]
@@ -110,21 +121,27 @@ A straightforward translation of the `MyHDL binary to gray counter`__ could look
 
 __ http://www.myhdl.org/doc/0.6/manual/conversion_examples.html#a-small-combinatorial-design
 
+Here, we show the association of a size attribute with some of the variables.
+
 Note that, unlike the MyHDL equivalent, there is no .next attribute on G.  A continuous
-assignment assigns continuously.
+assignment assigns continuously.  Also note that, like with MyHDL, Verilog programmers
+will be slightly surprised that width:0 defines a half-open interval, and Python
+programmers will be slightly surprised that width:0 seems backwards.  But both of these
+seem like relatively trivial things to explain.
 
 It's important to show that for loops should be supported, but in reality a better
 way to do this would be something like::
 
     @veri
     def bin2gray(B, width=8):
-        int[width-1:](B, G)
+        int[width:](B, G)
         G = B ^ (B >> 1)
         return G
 
 Note that we can abuse the Python 'int' keyword in this fashion because everything
 in Python is an object, so the fact that int isn't indexable (or that the result
-of such indexing isn't callable) is a runtime error, not a syntax error.
+of such indexing isn't callable) is not a syntax error (but would be a runtime
+error if we directly called the defined function from other Python).
 
 Simple Hierarchical example
 ------------------------------
