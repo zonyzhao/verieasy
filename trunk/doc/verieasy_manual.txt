@@ -1,0 +1,166 @@
+=========
+VeriEasy
+=========
+
+Motivation
+===========
+
+I love Python.  I like Verilog.  I want to combine them.
+
+Others have done this in various ways:
+  - Various people have connected Verilator or Verilog simulators using VPI to Python
+  - The MyHDL project lets you write in Python and then convert to Verilog
+
+The first approach is nice, particularly with Verilator, because you can
+run your Verilog code at considerable speed.  But it doesn't address initial
+modeling, where Python could be a lot faster than Verilog.
+
+The second approach, MyHDL, lets you model in Python, but it's not really all
+that readable or intuitive.  It has some nice concepts, mostly borrowed from
+elsewhere, but on the whole, the problem is that it bolts parallelism
+onto the side of Python, rather than creating a domain specific language
+that integrates the best of Python with parallelism.
+
+This results in a coding style that I find quite ugly and verbose, and it
+appears to be because of a design decision that all MyHDL programs must have
+valid Python semantics.
+
+This same design decision means that MyHDL is considerably slower than it could
+be, if MyHDL representations were compiled into "real" Python code in a similar
+fashion to the the way they are compiled into real Verilog.
+
+Objective
+===========
+
+There is a lot in Python to leverage, starting with ast compilation.  We can
+use this to leverage Python's infrastructure to create a Python-flavored
+parallel programming language that integrates with Python and that can
+easily be translated to Verilog (and, of course, VHDL at some point).
+
+What should such a Python-with-parallelism look like?
+
+  - It should have a clean, Python-inspired syntax that is parseable without
+    changes by the Python AST.
+  - It should be reasonably familiar to both Python and Verilog users, adding
+    as few new concepts as possible.
+  - It should allow simulation at multiple levels, starting with simple
+    Python-style inference of variable types, and allowing later constraints
+    to be added.
+  - It should be able to interoperate with "real" Python quite easily, and
+    to be translated to Verilog quite easily as well.
+  - It should handle the hardware needs of its users, but the inability
+    to handle all those needs immediately shouldn't keep us from getting
+    started.
+
+Initial semantics by example
+==============================
+
+
+Since the project is in an exploratory stage, semantics could be
+subject to change for awhile.  But I think there are some basic
+features that are pretty obviously the "right" way to do things.
+
+Simple sequential module
+--------------------------
+
+The `MyHDL counter example`__ could look something like this::
+
+    from verieasy import veri
+
+    @veri
+    def Inc(clock, resetn, enable, n):
+        if not resetn:
+            count.next = 0
+        elif clock.posedge:
+            count.next = (count + 1) % n
+        return count
+
+__ http://www.myhdl.org/doc/0.6/manual/conversion_examples.html#a-small-sequential-design
+
+
+This would be a valid Python module, and the goal would be that
+the object that the veri property converts the Inc function into
+would be usable from Python, and easily convertible into Verilog.
+
+Note that there is no ugly @always, and no additional def inside
+the function, and that the semantics of a register with an asynchronous
+reset are captured more accurately by this syntax than they are by the
+corresponding Verilog or MyHDL syntax.
+
+Finally, note that inputs come into the top of the function, and
+outputs are returned out the bottom.  While this does not match
+how Verilog works, it is intuitive to anybody who has written
+a program, and provides a clear visual indication of the difference
+between the inputs and outputs.
+
+Simple combinatorial example
+------------------------------
+
+A straightforward translation of the `MyHDL binary to gray counter`__ could look something like this::
+
+    @veri
+    def bin2gray(B, width=8):
+        int[width-1:](B, G)
+        int[width:](Bext)
+        Bext = B
+        for i in range(width):
+            G[i] = Bext[i+1] ^ Bext[i]
+
+        return G
+
+__ http://www.myhdl.org/doc/0.6/manual/conversion_examples.html#a-small-combinatorial-design
+
+Note that, unlike the MyHDL equivalent, there is no .next attribute on G.  A continuous
+assignment assigns continuously.
+
+It's important to show that for loops should be supported, but in reality a better
+way to do this would be something like::
+
+    @veri
+    def bin2gray(B, width=8):
+        int[width-1:](B, G)
+        G = B ^ (B >> 1)
+        return G
+
+Note that we can abuse the Python 'int' keyword in this fashion because everything
+in Python is an object, so the fact that int isn't indexable (or that the result
+of such indexing isn't callable) is a runtime error, not a syntax error.
+
+Simple Hierarchical example
+------------------------------
+
+Again, we compare against the `MyHDL version of the design`__::
+
+    @veri
+    def GrayInc(clock, resetn, enable, width):
+        inc_1 = Inc(clock=clock, resetn=resetn, enable=enable, n=2**width)
+        bin2gray_1 = bin2gray(B=inc_1.count, width=width)
+        graycnt = bin2gray_1.G
+        return graycnt
+
+    @veri
+    def GrayIncReg(clock, resetn, enable, width):
+        int[width-1:](graycnt)
+
+        grayinc_1 = GrayInc(clock, resetn)
+
+        grayinc_1.enable = enable
+        grayinc_1.width = width
+
+        if clock.posedge:
+            graycnt.next = grayinc_1.graycnt
+
+        return graycnt
+
+__http://www.myhdl.org/doc/0.6/manual/conversion_examples.html#a-hierarchical-design
+
+This shows us several features of the proposed new verieasy language:
+
+  - Like Verilog, the result of calling a veri-decorated function is an instantiation
+    of a module.
+  - Like Python and Verilog, input parameters and ports can be passed either by name or by order.
+  - Inputs to a module are also, and outputs from a module are only, available as attributes
+    of the instantiated module.
+  - Not all signals need to be named at all levels of the hierarchy.  (Automatic
+    naming will happen on conversion to Verilog.)
+
