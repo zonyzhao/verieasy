@@ -199,10 +199,11 @@ or you could include it in a testbench::
         dut = GrayInc(clock, resetn, enable, width)
         graycnt = dut.graycnt
 
-        if intial:
+        if initial:
             resetn = 0
             enable = 0
             clock = 0
+
             for i in range(10):
                 clock = not clock
             enable = 1
@@ -221,6 +222,7 @@ at a particular time (especially with multiple clocks), it may be useful to thin
 of clocks without time, or even of time happening because of clocks.  We should
 somehow support both paradigms.  (But obviously, waveform files will have to
 have some notion of time embedded in them.)
+
 
 Bootstrapping
 ================
