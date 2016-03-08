@@ -1,0 +1,1 @@
+Exploration of design ideas for a new domain-specific-language, implemented in Python, and designed to be easily translatable both to Verilog and to Python.
